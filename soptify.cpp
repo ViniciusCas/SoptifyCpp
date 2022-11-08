@@ -75,6 +75,7 @@ int menuArtist();
 
 ///registers
 ////general
+bool isValidDate(int day, int month, int year);
 
 ////artist
 bool checkArtistId(int id); 
@@ -89,15 +90,15 @@ void writeAlteredArtist(ARTIST artist, FILE * file);
 void repDeleteArtist();
 int deleteArtist(FILE * file);
 
-////muscic
+////music
 bool checkMusicId(int id); 
 void readMusics(int i);
 void writeMusic(MUSIC music);
 void repWriteMusic();
+void writeAlteredMusic(MUSIC musicToDelete, FILE * file); 
 MUSIC setMusic();
-// void repEditMusic();
-void repDeleteMusic();
 MUSIC findMusic(int id, FILE * file);
+
 
 int main(){
 	system("mode con:cols=120 lines=36");
@@ -136,6 +137,17 @@ int main(){
 }
 
 //registers
+///general
+bool isValidDate(int day, int month, int year) {
+	bool flag = true;
+
+	if (month < 1 || month > 12) flag = false;
+	else if (day < 1 || day > 31) flag = false;
+	else if (month == 2 && day > 28) flag = false;
+
+	return flag;
+}
+
 ///artists
 ARTIST setArtist(){
 	ARTIST artist;
@@ -285,7 +297,8 @@ void repEditArtist(){
 int deleteArtist(FILE * file){
 	int id;
 	ARTIST artistToDelete;
-	
+	MUSIC musicToDelete, music;
+
 	printArtistInputMask("Exclusao de Artista", 1);
 	
 	textcolor(15); textbackground(8);
@@ -308,13 +321,25 @@ int deleteArtist(FILE * file){
 	int choice;
 	
 	textcolor(15); textbackground(8);
-	gotoxy(endSideBar+1, 8); cout << "Deseja excluir esse artista?";
+	gotoxy(endSideBar+1, 8); cout << "Deseja excluir esse artista e suas musicas?";
 	gotoxy(endSideBar+2, 9); cout << "Sim";
 	gotoxy(endSideBar+2, 10); cout << "Nao";
 
 	choice = menuSelection(9, 10, options);
 	
-	if(choice == 1) artistToDelete.deleted = true;
+	if(choice == 1) {
+		artistToDelete.deleted = true;
+		
+		FILE * musics = fopen(musicsFile, "r+b");
+		while (fread(&music, sizeof(MUSIC), 1, musics)) {
+			if (music.artist.id == artistToDelete.id) {
+				music.deleted = true;
+				writeAlteredMusic(music, musics);
+			}
+		}
+
+		fclose(musics);
+	} 
 	else artistToDelete.deleted = false;
 
 	writeAlteredArtist(artistToDelete, file);
@@ -334,7 +359,6 @@ void repDeleteArtist(){
 		fclose(file);
 	}while(choice == 1);
 }
-
 
 bool checkArtistId(int id) {
 	FILE * file = fopen(artistsFile, "rb");
@@ -373,29 +397,32 @@ ARTIST checkArtistByName(char * name) {
 	FILE * file = fopen(artistsFile, "rb");
 	
 	bool flag = false;
+	int j = 0;
 	ARTIST artist;
 	ARTIST nullARTIST = {-1, "NULL", -1};
 	char filteredArtistName[71], filteredName[71];
+	char *src, *dst;
 
-	flag = false;
+	for (src = name, dst = filteredName; *src; src++) {
+		*src = tolower(*src);
+		if ('a' <= *src && *src <= 'z' || '0' <= *src && *src <= '9') 
+			*dst++ = *src;
+	}
+	*dst = '\0';
+
 	while(fread(&artist, sizeof(artist), 1, file)){
-		for (int i = 0, j = 0; i < strlen(artist.name); i++) {
-			char auxChar = tolower(artist.name[i]);
-			if(auxChar >= 'a' && auxChar <= 'z' || auxChar >= '0' && auxChar <= 9) {
-				filteredArtistName[j] = auxChar;
-				j++;
-			}
+		for (src = artist.name, dst = filteredArtistName; *src; src++) {
+			*src = tolower(*src);
+			if ('a' <= *src && *src <= 'z' || '0' <= *src && *src <= '9') 
+				*dst++ = *src;
 		}
+		*dst = '\0';
 
-		for (int i = 0, j = 0; i < strlen(name); i++) {
-			char auxChar = tolower(name[i]);
-			if(auxChar >= 'a' && auxChar <= 'z' || auxChar >= '0' && auxChar <= 9) {
-				filteredName[j] = auxChar;
-				j++;
-			}
-		}
+		#ifdef __STRICT_ANSI__
+			#undef __STRICT_ANSI__
+		#endif
 
-		if (!strcmpi(filteredArtistName, filteredName) && artist.deleted == false) {
+		if (!_strcmpi(filteredArtistName, filteredName) && artist.deleted == false) {
 			flag = true;
 			break;
 		}
@@ -407,22 +434,6 @@ ARTIST checkArtistByName(char * name) {
 	else return nullARTIST;
 }
 
-bool checkMusicId(int id) {
-	FILE * file = fopen(musicsFile, "rb");
-	
-	bool flag = true;
-	MUSIC music;
-
-	while(fread(&music, sizeof(music), 1, file)){
-		if (id == music.id && music.deleted == false) {			
-			flag = false;
-			break;
-		}
-	}
-	fclose(file);
-
-	return flag;
-}
 
 ///music session
 MUSIC setMusic() {
@@ -432,7 +443,7 @@ MUSIC setMusic() {
 	ARTIST auxArtist;
 	char trash;
 
-	printMusicInputMask("Cadastro de música", 1);
+	printMusicInputMask("Cadastro de musica", 1);
 
 	//input
 	do {
@@ -451,14 +462,23 @@ MUSIC setMusic() {
 	music.artist = auxArtist;
 
 	gotoxy(horizontalCenter + 23, 6); cin >> music.duration.mins;
-	gotoxy(horizontalCenter + 26, 6); cin >> music.duration.secs;
+	do {
+		gotoxy(horizontalCenter + 26, 6); cout << "    ";
+		gotoxy(horizontalCenter + 26, 6); cin >> music.duration.secs;
+		fflush(stdin);
+	} while(music.duration.secs < 0 || music.duration.secs > 59);
 	fflush(stdin);
+
 	gotoxy(horizontalCenter + 21, 7); fgets(music.title, 70, stdin);
 	fflush(stdin);
-	gotoxy(horizontalCenter + 37, 8);  cin >> music.release.d;
-	gotoxy(horizontalCenter + 40, 8); cin >> music.release.m;
-	gotoxy(horizontalCenter + 43, 8); cin >> music.release.y;
 	
+	do {
+		gotoxy(horizontalCenter + 37, 8); cout << "  /  /     ";
+		gotoxy(horizontalCenter + 37, 8); cin >> music.release.d;
+		gotoxy(horizontalCenter + 40, 8); cin >> music.release.m;
+		gotoxy(horizontalCenter + 43, 8); cin >> music.release.y;
+	} while (!isValidDate(music.release.d, music.release.m, music.release.y));
+
 	return music;
 }
 
@@ -475,16 +495,16 @@ void repWriteMusic(){
 	char options[][30] = {"Sim", "Nao"};
 
 	do{
-		readMusics(12);
+		readMusics(14);
 		music = setMusic();
 		writeMusic(music);
 		
 		textcolor(15); textbackground(8);
-		gotoxy(endSideBar+1, 8); cout << "Deseja cadastrar outro?";
-		gotoxy(endSideBar+2, 9); cout << "Sim";
-		gotoxy(endSideBar+2, 10); cout << "Nao";
+		gotoxy(endSideBar+1, 10); cout << "Deseja cadastrar outro?";
+		gotoxy(endSideBar+2, 11); cout << "Sim";
+		gotoxy(endSideBar+2, 12); cout << "Nao";
 
-		choice = menuSelection(9, 10, options);
+		choice = menuSelection(11, 12, options);
 	}while(choice == 1);
 }
 
@@ -503,90 +523,44 @@ void readMusics(int i) {
 		gotoxy(j, i); cout << " ";
 	}
 	gotoxy(endSideBar, i); cout << "ID";
-	gotoxy(endSideBar + 10, i); cout << "Musica";
-	gotoxy(endSideBar + 35, i); cout << "Artista";
-	gotoxy(endSideBar + 60, i); cout << "Duracao";
+	gotoxy(endSideBar + 7, i); cout << "Musica";
+	gotoxy(endSideBar + 30, i); cout << "Artista";
+	gotoxy(endSideBar + 50, i); cout << "Duracao";
+	gotoxy(endSideBar + 60, i); cout << "Data de lancamento";
 
 	textbackground(8); textcolor(0);
 	while(fread(&music, sizeof(music), 1, file)){
 		if(music.deleted == false){
 			gotoxy(endSideBar, ++i); cout << music.id;
-			gotoxy(endSideBar + 10, i); cout << music.title;
-			gotoxy(endSideBar + 35, i); cout << music.artist.name;
-			gotoxy(endSideBar + 60, i); cout << music.duration.mins << ":" << music.duration.secs;
+			gotoxy(endSideBar + 7, i); cout << music.title;
+			gotoxy(endSideBar + 30, i); cout << music.artist.name;
+			gotoxy(endSideBar + 51, i); 
+			if(music.duration.mins < 10) {
+				cout << "0" << music.duration.mins << ":";
+			} else cout << music.duration.mins << ":";
+			if (music.duration.secs < 10) {
+				cout << "0" << music.duration.secs;
+			} else cout << music.duration.secs;
+
+			gotoxy(endSideBar + 64, i);
+			if (music.release.d < 10) {
+				cout << "0" << music.release.d << "/";
+			} else cout << music.release.d << "/";
+			if (music.release.m < 10) {
+				cout << "0" << music.release.m << "/" ;
+			} else cout << music.release.m << "/";
+			cout << music.release.y;
 		}
 	}
 
 	fclose(file);
 }
-//TODO:
-// ARTIST editMusic(FILE * file){
-// 	int id;
-// 	MUSIC musicToAlter, musicAltered;
-// 	char aux[11];
-	
-// 	printArtistInputMask("Alteracao de Musica", 1);
-	
-// 	textcolor(15); textbackground(8);
-	
-// 	do{
-// 		gotoxy(endSideBar, 0); cout << " Digite o ID do musica que deseja alterar:                ";
-// 		gotoxy(endSideBar + 44, 0); cin >> id;
-// 		fflush(stdin);
 
-// 		//musicToAlter = findArtist(id, file);
-// 	}while(musicToAlter.id == -1);
-
-// 	musicAltered.id = musicToAlter.id;
-
-// 	textcolor(0); textcolor(15);
-// 	gotoxy(endSideBar, 1); cout << " Atualize os dados do musica.";
-// 	gotoxy(endSideBar, 2); cout << " Se nao quiser alterar o campo, apenas pressione enter.";
-	
-// 	gotoxy(horizontalCenter + 16, 7); cout << musicToAlter.id;
-	
-// 	gotoxy(horizontalCenter + 18, 8); fgets(musicAltered.name, 70, stdin);
-// 	if(musicAltered.name[0] == '\0') {
-// 		strcpy(musicAltered.name, musicToAlter.name);
-// 		gotoxy(horizontalCenter + 18, 8); cout << musicToAlter.name << "                      ";
-// 	}
-// 	gotoxy(horizontalCenter + 30, 9); fgets(aux, 10, stdin);
-// 	if(aux[0] == '\0'){
-// 		musicAltered.listeners = musicToAlter.listeners;
-// 		gotoxy(horizontalCenter + 30, 9); cout << musicToAlter.listeners << "                      ";
-// 	} 
-// 	else artistAltered.listeners = atoi(aux);
-
-// 	return artistAltered;
-// }
-// //TODO:
-// void writeAlteredMusic(ARTIST artist, FILE * file){
-// 	fseek (file,-sizeof(ARTIST),SEEK_CUR);
-// 	fwrite(&artist, sizeof(ARTIST), 1, file);
-// 	fflush(file);
-// }
-// //TODO:
-// void repEditMusic(){
-// 	FILE * file;
-// 	ARTIST artist;
-// 	int choice;
-// 	char options[][30] = {"Sim", "Nao"};
-
-// 	do{
-// 		readArtists(12);
-// 		file = fopen(artistsFile, "r+b");
-// 		artist = editArtist(file);
-// 		writeAlteredArtist(artist, file);
-// 		fclose(file);
-		
-// 		textcolor(15); textbackground(8);
-// 		gotoxy(endSideBar+1, 8); cout << "Deseja alterar outro?";
-// 		gotoxy(endSideBar+2, 9); cout << "Sim";
-// 		gotoxy(endSideBar+2, 10); cout << "Nao";
-
-// 		choice = menuSelection(9, 10, options);
-// 	}while(choice == 1);
-// }
+void writeAlteredMusic(MUSIC musicToDelete, FILE * file){ 	
+	fseek (file,-sizeof(MUSIC),SEEK_CUR);
+	fwrite(&musicToDelete, sizeof(MUSIC), 1, file);
+	fflush(file);
+}
 
 MUSIC findMusic(int id, FILE * file){
 	rewind(file);
@@ -598,6 +572,23 @@ MUSIC findMusic(int id, FILE * file){
 	}
 
 	return nullMUSIC;
+}
+
+bool checkMusicId(int id) {
+	FILE * file = fopen(musicsFile, "rb");
+	
+	bool flag = true;
+	MUSIC music;
+
+	while(fread(&music, sizeof(music), 1, file)){
+		if (id == music.id && music.deleted == false) {			
+			flag = false;
+			break;
+		}
+	}
+	fclose(file);
+
+	return flag;
 }
 
 //menus
@@ -691,12 +682,9 @@ int menuSelection(int rowMin, int rowMax, char options[][30]){
     return choice;
 }
 
-
-void repDeleteMusic(){}
-
 void menuMusicExecute(){
 	int choice = 0;
-	while(choice >= 0 && choice < 6){
+	while(choice >= 0 && choice < 4){
 		choice = menuMusic();
 		switch(choice){
 			case 1:
@@ -707,19 +695,13 @@ void menuMusicExecute(){
 				getch();
 				break;
 			case 3:
-				//TODO:
-				// repEditMusic();
-				break;
-			case 4:
-				//TODO:
-				// repDeleteMusic();
 				break;
 		}
 	}
 }
 
 int menuMusic(){
-	char options[][30] = {"Cadastrar Musicas", "Visualizar Musicas", "Alterar musica", "Excluir musica", "Ajuda (F1)", "Voltar"};
+	char options[][30] = {"Cadastrar Musicas", "Visualizar Musicas", "Ajuda (F1)", "Voltar"};
 	int choice = 0;
 	
 	clearMenuArea();
@@ -729,11 +711,11 @@ int menuMusic(){
 	gotoxy(41, 1); cout << "Opcoes: ";
 	
 	int i;
-	for(i=2; i<8; i++){
+	for(i=2; i<6; i++){
 		gotoxy(42, i); cout << options[i-2];
 	}
 	
-	choice = menuSelection(2, 7, options);
+	choice = menuSelection(2, 5, options);
 	return choice;
 }
 
@@ -865,6 +847,4 @@ void printMusicInputMask(string header, int i){
 	gotoxy(horizontalCenter + 4, i+6); cout << "Titulo da faixa: ";
 	gotoxy(horizontalCenter + 4, i+7); cout << "Data de lancamento (dd/mm/aaaa):   /  /";
 }
-
-
 
